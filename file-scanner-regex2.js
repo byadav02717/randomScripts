@@ -187,10 +187,16 @@ function extractHqlFragments(source) {
 
     // Also catch string variables assigned HQL-like content
     // e.g.  String hql = "select ... " + "from ... " + "where ...";
-    // Handles concatenated strings across multiple lines.
-    // Captures variable name so we can skip SQL_* prefixed ones.
+    // Handles concatenated strings across multiple lines (with or
+    // without a trailing semicolon). Captures variable name so we
+    // can skip SQL_*/*_SQL/*_SQL_* prefixed ones.
+    //
+    // The outer (...)+ greedily matches as many "..."+"..."  segments
+    // as it can. It naturally stops at any token that is not a quote
+    // or +, so omitting the trailing ; is safe — the next declaration
+    // line won't be consumed.
     const assignPattern =
-        /(?:private\s+)?(?:static\s+)?(?:final\s+)?(?:String|StringBuilder)\s+(\w+)\s*=\s*((?:"(?:[^"\\]|\\.)*"\s*(?:\+\s*)?)+);/g;
+        /(?:private\s+)?(?:static\s+)?(?:final\s+)?(?:String|StringBuilder)\s+(\w+)\s*=\s*((?:"(?:[^"\\]|\\.)*"\s*(?:\+\s*)?)+)/g;
 
     while ((match = assignPattern.exec(source)) !== null) {
         const varName     = match[1];
