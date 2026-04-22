@@ -3,7 +3,7 @@
 /**
  * HQL Literal Scanner
  * 
- * Scans Java source files for HQL queries containing:
+ * Scans .java files for HQL queries containing:
  *   - Boolean literals  : = '0', = '1', = 0, = 1, <> '0' etc.
  *   - Date literals     : = '9999-12-31', > '2024-01-01' etc.
  *   - Timestamp lits    : > '2024-01-01 00:00:00' etc.
@@ -11,8 +11,11 @@
  *   - Underscored names : ROW_CREAT_TS, CANC_IND etc. (any identifier with _)
  * 
  * Skips:
- *   - Variables whose name starts with 'SQL_' (treated as native SQL)
- *   - createNativeQuery(...) calls
+ *   - createNativeQuery(...) calls (native SQL)
+ *   - Variables whose name indicates native SQL:
+ *       starts with  SQL_       (e.g. SQL_FIND_USER)
+ *       ends with    _SQL       (e.g. FIND_USER_SQL)
+ *       contains     _SQL_      (e.g. FIND_SQL_QUERY)
  * 
  * Usage:
  *   node hql-scanner.js --root ./src
@@ -194,8 +197,11 @@ function extractHqlFragments(source) {
         const assignValue = match[2];
         const startLine   = source.substring(0, match.index).split('\n').length;
 
-        // Skip native SQL variables by naming convention
-        if (varName.toUpperCase().startsWith('SQL_')) continue;
+        // Skip native SQL variables by naming convention:
+        //   starts with  SQL_
+        //   ends with    _SQL
+        //   contains     _SQL_
+        if (isSqlVariableName(varName)) continue;
 
         // Extract and join ALL string literal contents in the assignment
         // e.g.  "select " + "from X" → "select from X"
@@ -270,6 +276,18 @@ function getContext(str, index, radius) {
     return pre + str.substring(start, end).trim() + post;
 }
 
+/**
+ * Returns true if the variable name indicates a native SQL query.
+ * Matches: SQL_* (prefix), *_SQL (suffix), *_SQL_* (infix)
+ * Case-insensitive so sql_foo, FOO_SQL, foo_sql_bar all match.
+ */
+function isSqlVariableName(varName) {
+    const upper = varName.toUpperCase();
+    return upper.startsWith('SQL_')
+        || upper.endsWith('_SQL')
+        || upper.includes('_SQL_');
+}
+
 // ─── File walker ──────────────────────────────────────────────────────────────
 
 function walkDir(dir, fileList = []) {
@@ -284,7 +302,7 @@ function walkDir(dir, fileList = []) {
             // Skip common non-source dirs
             if (['node_modules', '.git', 'target', 'build', '.idea'].includes(entry)) continue;
             walkDir(full, fileList);
-        } else if (entry.endsWith('.java') || entry.endsWith('.xml')) {
+        } else if (entry.endsWith('.java')) {
             fileList.push(full);
         }
     }
@@ -297,7 +315,7 @@ function main() {
     console.log(`\n🔍  HQL Literal Scanner`);
     console.log(`    Root  : ${path.resolve(ROOT_DIR)}`);
     console.log(`    Types : ${TYPE_FILTER ? TYPE_FILTER.join(', ') : 'all'}`);
-    console.log(`    Skip  : createNativeQuery(...) calls, SQL_* variables`);
+    console.log(`    Skip  : createNativeQuery, SQL_*/*_SQL/*_SQL_* vars`);
     console.log('');
 
     const files   = walkDir(ROOT_DIR);
